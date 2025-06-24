@@ -23,7 +23,7 @@ let birdSpeedMax = 5;
 let birdSpeedMaxRange = [5,9];
 
 let maxBirdCount = 2;
-let launchAngle = 0;
+let launchAngle = -1.57079632679;
 let launchSpeed = 8;
 
 let rewardForCatch = 10;
@@ -69,6 +69,7 @@ function draw() {
       hitMarkers.push(new HitMarker(birds[i].pos.x, birds[i].pos.y));
       removeBird(i);
       fish.reset();
+      launchAngle = -PI/2;
     }
   }
 
@@ -79,6 +80,7 @@ function draw() {
     if (fish.offscreen()) {
       score.miss();
       fish.reset();
+      launchAngle = -PI/2;
       trial.end(false, -1);
     }
   }
@@ -140,7 +142,16 @@ function mousePressed() {
   launchFish();
 }
 
+function touchStarted() {
+  launchFish();
+}
+
 function launchFish() {
+  if (!fish.launched) {
+    let dx = mouseX - fish.pos.x;
+    let dy = mouseY - fish.pos.y;
+    launchAngle = atan2(dy, dx);
+  }
   fish.launch(launchAngle, launchSpeed);
   trial.start();
 }
