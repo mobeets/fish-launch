@@ -24,8 +24,10 @@ let birdSpeedMaxRange = [5,9];
 
 let maxBirdCount = 2;
 let launchAngle = -1.57079632679;
-let launchSpeed = 8;
 
+let fps = 60;
+let launchTime = 1.7; // duration of launch, in seconds
+let launchSpeed; // will be calculated to ensure fixed launchTime, regardless of windowHeight
 let rewardForCatch = 10;
 let penaltyForMiss = 5;
 let cooldown = 0;
@@ -43,6 +45,7 @@ function preload() {
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  launchSpeed = (windowHeight/launchTime)/fps;
   fish = new Fish(width / 2, height - 50, fishSize, fishImg);
   score = new Score(rewardForCatch, penaltyForMiss);
   trial = new Trial();
@@ -50,6 +53,7 @@ function setup() {
 }
 
 function draw() {
+  frameRate(fps);
   imageMode(CORNER);
   image(bgImg, 0, 0, windowWidth, windowHeight);
 
@@ -147,11 +151,7 @@ function touchStarted() {
 }
 
 function launchFish() {
-  if (!fish.launched) {
-    let dx = mouseX - fish.pos.x;
-    let dy = mouseY - fish.pos.y;
-    launchAngle = atan2(dy, dx);
-  }
+  updateLaunchAngle();
   fish.launch(launchAngle, launchSpeed);
   trial.start();
 }
@@ -163,6 +163,10 @@ function removeBird(i) {
 }
 
 function mouseMoved() {
+  updateLaunchAngle();
+}
+
+function updateLaunchAngle() {
   if (typeof fish === 'undefined') {}
   else if (!fish.launched) {
     let dx = mouseX - fish.pos.x;
