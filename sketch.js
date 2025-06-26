@@ -5,14 +5,16 @@ let bgImg;
 let fishImg;
 let birdImg1;
 let birdImg2;
+let confettiImg;
 
 let score;
 let fish;
 let birds = [];
 let hitMarkers = [];
-let hitMarkerDurationMsec = 250;
+let hitMarkerDurationMsec = 500;
 let hitMarkerSize = 50;
 let fishSize = 100;
+let showStats = false;
 
 let birdIndex = 0;
 let birdSize = 80;
@@ -20,7 +22,7 @@ let birdSizeMin = 30;
 let birdSizeMax = 80;
 let birdSpeedMin = 3;
 let birdSpeedMax = 5;
-let birdSpeedMaxRange = [5,9];
+let birdSpeedMaxRange = [5,10];
 
 let maxBirdCount = 2;
 let launchAngle = -1.57079632679;
@@ -41,6 +43,7 @@ function preload() {
   fishImg = loadImage('assets/fish.png');
   birdImg1 = loadImage('assets/bird1.png');
   birdImg2 = loadImage('assets/bird2.png');
+  confettiImg = loadImage('assets/confettibw.gif'); 
 }
 
 function setup() {
@@ -68,9 +71,9 @@ function draw() {
     
     // Check for collision
     if (fish.launched && fish.hits(birds[i])) {
-      score.catch();
+      score.catch(birds[i].speed, birds[i].pos.y);
       trial.end(true, birds[i].index);
-      hitMarkers.push(new HitMarker(birds[i].pos.x, birds[i].pos.y));
+      hitMarkers.push(new HitMarker(birds[i].pos.x, birds[i].pos.y, birds[i].vel.x, birds[i].size, birdSpeedToScore(birds[i].speed)));
       removeBird(i);
       fish.reset();
       launchAngle = -PI/2;
@@ -83,6 +86,7 @@ function draw() {
     trial.update();
     if (fish.offscreen()) {
       score.miss();
+      hitMarkers.push(new HitMarker(0, 0, 0, 0, -penaltyForMiss));
       fish.reset();
       launchAngle = -PI/2;
       trial.end(false, -1);
@@ -115,6 +119,7 @@ function draw() {
     birdSize -= 2;
     birdSpeedMax += 0.2;
     score.progress = 0;
+
   } else if (score.progress <= -2) {
     birdSize += 2;
     birdSpeedMax -= 0.2;
@@ -139,6 +144,9 @@ function keyPressed() {
   }
   if (key === 'd' || key === 'D') {
     saveTrials();
+  }
+  else if (key === 's' || key == 'S') {
+    showStats = !showStats;
   }
 }
 
@@ -182,6 +190,10 @@ function drawRotatedImage(img, x, y, dw, dh, angle) {
   imageMode(CENTER);           // Draw image centered on (x, y)
   image(img, 0, 0, dw, dh);            // Draw at new origin (0,0)
   pop();                       // Restore drawing settings
+}
+
+function birdSpeedToScore(birdSpeed) {
+  return rewardForCatch + floor(birdSpeed - birdSpeedMin);
 }
 
 class Fish {
@@ -300,14 +312,18 @@ class Score {
     this.score = 0;
     this.streakLength = 0;
     this.progress = 0;
+    this.nShots = 0;
+    this.nHits = 0;
+    this.history = [];
   }
   
   reset() {
     this.score = 0;
   }
   
-  catch() {
-    this.score += this.rewardForCatch;
+  catch(birdSpeed, birdHeight) {
+    this.updateHistory(true, birdSpeed, birdHeight);
+    this.score += birdSpeedToScore(birdSpeed);
     if (this.streakLength >= 0) {
       this.streakLength += 1;
       this.progress += 1;
@@ -318,6 +334,7 @@ class Score {
   }
   
   miss() {
+    this.updateHistory(false, 0, 0);
     this.score -= this.penaltyForMiss;
     if (this.streakLength <= 0) {
       this.streakLength -= 1;
@@ -327,25 +344,58 @@ class Score {
       this.progress = -1;
     }
   }
+
+  updateHistory(wasHit, birdSpeed, birdHeight) {
+    this.nShots += 1;
+    if (wasHit) {
+      this.nHits += 1;
+      let bh = map(birdHeight, birdSize, height / 2 - 50, 10, 0);
+      this.history.push({birdSpeed: floor(birdSpeed), birdHeight: bh});
+    }
+  }
   
   display() {
-    fill(0);
+    let scoreX = 180;
+    let difficultyX = 10;
+
+    textAlign(LEFT);
+    noStroke();
+    fill('white');
     textSize(18);
-    text(`Score: ${this.score}`, 10, 20);
+    text(`Score: ${this.score}`, scoreX, 20);
     
     this.curDifficulty = round(map(-birdSize, -birdSizeMax, -birdSizeMin, 0, (birdSizeMax-birdSizeMin)/2));
-    text(`Difficulty: ${this.curDifficulty}`, 150, 20);
-    
-    let streakDisp = max(0, this.streakLength);
-    text(`Streak: ${streakDisp}`, 300, 20);
+    text(`Level: ${this.curDifficulty+1}`, difficultyX, 20);
+
+    noStroke();
+    if (this.progress > 0) {
+      fill('#5edb80');
+      text('⇧', difficultyX+80, 20);
+    } else if (this.progress < 0) {
+      fill('#ff7963');
+      text('⇩', difficultyX+80, 20);
+    }
+
+    if (showStats && this.nShots > 0) {
+      textAlign(CENTER);
+      noStroke();
+      fill('white');
+      text(`Streak: ${this.streakLength}`, windowWidth-100, 50);
+
+      text(`${this.nHits} of ${this.nShots} (${round(100 * this.nHits / this.nShots)}%)`, windowWidth-100, 20);
+    }
   }
 }
 
 class HitMarker {
-  constructor(x, y) {
+  constructor(x, y, vel_x, size, rew) {
     this.pos = createVector(x, y);
     this.timestamp = millis(); // Record creation time
     this.duration = hitMarkerDurationMsec; // duration
+    this.vel_x = vel_x;
+    this.size = size;
+    this.rew = rew;
+    confettiImg.reset();
   }
 
   isExpired() {
@@ -353,9 +403,31 @@ class HitMarker {
   }
 
   display() {
-    fill(0, 255, 0);
-    textSize(24);
-    text(`+${rewardForCatch}`, this.pos.x, this.pos.y);
+    if (this.rew > 0) {
+      fill(255);
+      push();
+      translate(this.pos.x, this.pos.y);
+      if (this.vel_x < 0) {
+        // flip image horizontally if bird is flying left
+        scale(-1, 1);
+      }
+      imageMode(CENTER);
+      // image(birdImg1, 0, 0, 1.5*this.size, 1.5*this.size);
+      image(confettiImg, 0, 0, 3*this.size, 3*this.size);
+      pop();
+    }
+
+    // show score
+    let pre = '+';
+    if (this.rew > 0) {
+      fill('#5edb80');
+    } else {
+      pre = '-';
+      fill('#ff7963');
+    }
+    textAlign(CENTER);
+    textSize(18);
+    text(`${pre}${this.rew}`, 290, 20); // show next to score
   }
 }
 
