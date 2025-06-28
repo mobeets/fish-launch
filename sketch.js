@@ -22,7 +22,9 @@ let birdSizeMin = 30;
 let birdSizeMax = 80;
 let birdSpeedMin = 3;
 let birdSpeedMax = 5;
+let birdMaxHeight;
 let birdSpeedMaxRange = [5,10];
+let birdTypes = [1];
 
 let maxBirdCount = 2;
 let launchAngle = -1.57079632679;
@@ -53,6 +55,7 @@ function setup() {
   score = new Score(rewardForCatch, penaltyForMiss);
   trial = new Trial();
   startTime = millis();
+  birdMaxHeight = height / 2 - 50;
 }
 
 function draw() {
@@ -84,12 +87,14 @@ function draw() {
   if (fish.launched) {
     fish.update();
     trial.update();
-    if (fish.offscreen()) {
+    if (!fish.dodging && fish.offscreen()) {
       score.miss();
       hitMarkers.push(new HitMarker(0, 0, 0, 0, -penaltyForMiss));
       fish.reset();
       launchAngle = -PI/2;
       trial.end(false, -1);
+    } else if (fish.reachedTarget()) {
+      fish.reset();
     }
   }
   fish.display(launchAngle);
@@ -107,7 +112,8 @@ function draw() {
   if (cooldown <= 0 && random() < 0.01) {
     if (birds.length < maxBirdCount) {
       birdIndex += 1;
-      birds.push(new Bird(birdIndex, birdSize));
+      let birdType = 1;
+      birds.push(new Bird(birdType, birdIndex, birdSize));
     }
     cooldown = 30;
   } else {
@@ -134,11 +140,12 @@ function draw() {
 function keyPressed() {
   if (typeof fish === 'undefined') {}
   else if (!fish.launched) {
-    if (keyCode === LEFT_ARROW) {
-      launchAngle -= PI / 30;
-    } else if (keyCode === RIGHT_ARROW) {
-      launchAngle += PI / 30;
-    } else if (keyCode == 32) { // spacebar
+    // if (keyCode === LEFT_ARROW) {
+    //   fish.pos.x = constrain(fish.pos.x - 20, fishSize, windowHeight-fishSize);
+    // } else if (keyCode === RIGHT_ARROW) {
+    //   fish.pos.x = constrain(fish.pos.x + 20, fishSize, windowHeight-fishSize);
+    // }
+    if (keyCode == 32) { // spacebar
       launchFish();
     }
   }
@@ -160,7 +167,16 @@ function touchStarted() {
 
 function launchFish() {
   updateLaunchAngle();
-  fish.launch(launchAngle, launchSpeed);
+
+  let isDodge = mouseY > 0.8*windowHeight;
+  if (isDodge) {
+    if (mouseX > fish.pos.x) {
+      launchAngle = 0;
+    } else {
+      launchAngle = -PI;
+    }
+  }
+  fish.launch(launchAngle, launchSpeed, isDodge, mouseX);
   trial.start();
 }
 
@@ -187,6 +203,10 @@ function drawRotatedImage(img, x, y, dw, dh, angle) {
   push();                      // Save current drawing settings
   translate(x, y);             // Move origin to image center
   rotate(angle);               // Rotate canvas by launchAngle (in radians)
+  if (angle < -PI/2 && angle > -3*PI/2) {
+    // todo: flip vertically
+    scale(1, -1);
+  }
   imageMode(CENTER);           // Draw image centered on (x, y)
   image(img, 0, 0, dw, dh);            // Draw at new origin (0,0)
   pop();                       // Restore drawing settings
@@ -203,19 +223,32 @@ class Fish {
     this.size = fishSize;
     this.vel = createVector(0, 0);
     this.launched = false;
+    this.dodging = false;
+    this.launchX = undefined;
     this.fishImg = fishImg;
   }
 
-  launch(launchAngle, launchSpeed) {
+  launch(launchAngle, launchSpeed, isDodge, xDodge) {
     if (!this.launched) {
       this.vel = p5.Vector.fromAngle(launchAngle);
       this.vel.setMag(launchSpeed);
       this.launched = true;
+      this.dodging = isDodge;
+      this.launchX = xDodge;
     }
   }
 
   update() {
     this.pos.add(this.vel);
+
+    if (this.dodging) {
+      // wrap fish x position around screen
+      if (this.pos.x < 0) {
+        this.pos.x = windowWidth + this.pos.x;
+      } else if (this.pos.x > windowWidth) {
+        this.pos.x = (this.pos.x - windowWidth);
+      }
+    }
   }
 
   display(launchAngle) {
@@ -229,9 +262,23 @@ class Fish {
   }
 
   reset() {
-    this.pos = this.origin.copy();
+    if (this.dodging) {
+      this.pos = createVector(this.launchX, this.origin.y);
+    } else {
+      this.pos = this.origin.copy();
+    }
     this.vel.set(0, 0);
     this.launched = false;
+    this.dodging = false;
+    this.launchX = undefined;
+  }
+
+  reachedTarget() {
+    if (this.dodging) {
+      return dist(this.pos.x, this.pos.y, this.launchX, this.pos.y) < birdSize/3;
+    } else {
+      return false;
+    }
   }
 
   offscreen() {
@@ -240,13 +287,19 @@ class Fish {
 }
 
 class Bird {
-  constructor(birdIndex, birdSize) {
+  constructor(birdType, birdIndex, birdSize) {
+    this.birdType = birdType;
     this.timeStart = millis() - startTime;
     this.timeEnd = undefined;
     this.birdIndex = birdIndex;
     this.pos = createVector(random() < 0.5 ? 0 : width, random(birdSize, height / 2 - 50));
     this.speed = random(birdSpeedMin, birdSpeedMax);
     this.vel = createVector(this.pos.x === 0 ? this.speed : -this.speed, 0);
+    this.y_amplitude = random(1,3);
+    this.y_phase = random(0, 1000);
+    if (this.birdType == 1) {
+      this.y_amplitude = 0;
+    }
     this.startPos_x = this.pos.x;
     this.startPos_y = this.pos.y;
     this.size = birdSize;
@@ -258,7 +311,10 @@ class Bird {
   }
 
   update() {
-    this.pos.add(this.vel);
+    let t = (millis() - this.y_phase) / 1000;
+    // todo: prevent going below maxBirdHeight
+    let curVel = createVector(this.vel.x, this.y_amplitude*cos(t));
+    this.pos.add(curVel);
   }
   
   end() {
@@ -285,6 +341,13 @@ class Bird {
       this.timeIndex = 0;
       this.imageIndex = this.imageIndex == 0 ? 1 : 0;
     }
+    
+    // stop flapping when heading down
+    if (this.birdType == 2) {
+      let t = (millis() - this.y_phase) / 1000;
+      if (cos(t) > 0.2) { this.imageIndex = 0; }
+    }
+
     let curBirdImg = this.images[this.imageIndex];
     
     fill(255);
@@ -300,7 +363,8 @@ class Bird {
   }
   
   offscreen() {
-    return this.pos.x < 0 || this.pos.x > width || this.pos.y < 0 || this.pos.y > height;
+    let yBuffer = 200;
+    return this.pos.x < 0 || this.pos.x > width || this.pos.y < -yBuffer || this.pos.y > height+yBuffer;
   }
 } 
 
