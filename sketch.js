@@ -6,6 +6,7 @@ let fishImg;
 let birdImg1;
 let birdImg2;
 let confettiImg;
+let myFont;
 
 let score;
 let fish;
@@ -46,9 +47,11 @@ function preload() {
   birdImg1 = loadImage('assets/bird1.png');
   birdImg2 = loadImage('assets/bird2.png');
   confettiImg = loadImage('assets/confettibw.gif'); 
+  myFont = loadFont('assets/LuckiestGuy-Regular.ttf');
 }
 
 function setup() {
+  textFont(myFont);
   createCanvas(windowWidth, windowHeight);
   launchSpeed = (windowHeight/launchTime)/fps;
   fish = new Fish(width / 2, height - 50, fishSize, fishImg);
@@ -423,7 +426,7 @@ class Score {
     let difficultyX = 10;
 
     textAlign(LEFT);
-    noStroke();
+    stroke('black');
     fill('white');
     textSize(18);
     text(`Score: ${this.score}`, scoreX, 20);
@@ -433,16 +436,19 @@ class Score {
 
     noStroke();
     if (this.progress > 0) {
+      textFont('Courier New');
       fill('#5edb80');
       text('⇧', difficultyX+80, 20);
     } else if (this.progress < 0) {
+      textFont('Courier New');
       fill('#ff7963');
       text('⇩', difficultyX+80, 20);
     }
+    textFont(myFont);
 
     if (showStats && this.nShots > 0) {
       textAlign(CENTER);
-      noStroke();
+      stroke('black');
       fill('white');
       text(`Streak: ${this.streakLength}`, windowWidth-100, 50);
 
@@ -482,16 +488,21 @@ class HitMarker {
     }
 
     // show score
+    stroke('black');
     let pre = '+';
     if (this.rew > 0) {
       fill('#5edb80');
     } else {
-      pre = '-';
+      pre = '';
       fill('#ff7963');
     }
     textAlign(CENTER);
     textSize(18);
     text(`${pre}${this.rew}`, 290, 20); // show next to score
+    if (this.rew > 0) {
+      // show by bird
+      text(`${pre}${this.rew}`, this.pos.x, this.pos.y+50);
+    }
   }
 }
 
